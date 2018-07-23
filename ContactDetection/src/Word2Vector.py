@@ -20,7 +20,7 @@ g_params = {
     'skip_window': 3,
     'num_sampled': 128,
     'learning_rate': 0.8,
-    'n_epoch': 10,
+    'n_epoch': 50,
     'model_dir': '%s/model' % config.DataBaseDir,
     'minority_replacement': '_UNK',
     'verbose': 500,
@@ -97,7 +97,6 @@ class Word2Vec:
         tl.layers.initialize_global_variables(tf_sess)
         if self.resume:
             print("Load existing model" + "!" * 10)
-            # Load from ckpt or npz file
             tl.files.load_and_assign_npz_dict(name= self.model_file_name + '.npz', sess= tf_sess)
 
         emb_net.print_params(False)
@@ -123,18 +122,18 @@ class Word2Vec:
                 print('Average loss at step %d/%d, loss: %.6f, take %ss' % (step, self.num_steps, np.mean(loss_list), int(end - start)))
 
             ## saving
-            if((step % ((self.verbose + 1) * 10) == 0) & (step != 0)):
+            if(((step < self.num_steps - 1)) & (step % ((self.verbose + 1) * 10) == 0) | (step == self.num_steps - 1)):
                 print("Save model, data and dictionaries" + "!" * 10)
-                # Save to ckpt or npz file
+                # # Save to ckpt or npz file
                 tl.files.save_npz_dict(emb_net.all_params, name= self.model_file_name + '.npz', sess= tf_sess)
-                tl.files.save_any_to_npy(
-                    save_dict={
-                        'data': data,
-                        'count': count,
-                        'dictionary': dictionary,
-                        'reverse_dictionary': reverse_dictionary
-                    }, name= self.model_file_name + '.npy'
-                )
+                # tl.files.save_any_to_npy(
+                #     save_dict={
+                #         'data': data,
+                #         'count': count,
+                #         'dictionary': dictionary,
+                #         'reverse_dictionary': reverse_dictionary
+                #     }, name= self.model_file_name + '.npy'
+                # )
                 ## saving embedding matrix
                 uni_words = list(dictionary.keys())
                 uni_ids = list(dictionary.values())

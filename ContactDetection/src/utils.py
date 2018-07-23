@@ -3,6 +3,7 @@ import jieba
 import re, time, datetime
 from contextlib import contextmanager
 import os,sys
+import numpy as np
 
 ## timer function
 @contextmanager
@@ -73,8 +74,9 @@ def is_chinese_words(data):
 
 def word_seg(sentence):
     ''''''
-    r_symbols = '[’!"#$%&\'()*,/:;<=>?@[\\]^_`{|}~]+|[\t\n]+|[／“”　￼＝·《》～——！，；【】：。？、~@#￥%……&*（）]+'
+    r_symbols = '[’!"#$%&\'()*,/:;<=>?@[\\]^`{|}~]+|[\t\n]+|[／“”　￼＝·《》～！，；【】：。？、~@#￥%……&*（）]+'
     r_float = "^\d+?\.\d+?$"
+    r_wx = "^[a-z|A-Z]+[0-9]+$"
     ## replace symbols
     sentence = sentence.replace('+', '加')
     sentence = re.sub(r_symbols, ' ', sentence.strip())
@@ -87,9 +89,18 @@ def word_seg(sentence):
             clean_words.append('INTEGER_%s' % len(w))
         elif(re.match(r_float, w) != None): # float
             clean_words.append('FLOAT')
-        elif(w.isalpha() & ((w.lower() == 'v') | (w.lower() == 'q') | (len(w) > 1))): # alpha
+        elif((w.lower() == 'v') | (w.lower() == 'q') | (w.lower() == 'w')): # alpha
             clean_words.append(w.lower())
-        elif(is_chinese_words(w) & (len(w) >= 1)):
+        elif((w.isalpha() == True) & (len(w) > 1) & (is_chinese_words(w) == False)):
+            clean_words.append('ALPHA_%s' % len(w))
+        elif((is_chinese_words(w) & (len(w) > 1)) | (w == '加')): # chinese words
+            clean_words.append(w)
+        elif(re.match(r_wx, w) != None): # alpha + num
+            if(len(w) <= 5):
+                clean_words.append('ALNUM_LESS')
+            else:
+                clean_words.append('ALNUM_%s' % len(w))
+        elif((w == '-') | (w == '_')):
             clean_words.append(w)
     return ' '.join(clean_words)
 
