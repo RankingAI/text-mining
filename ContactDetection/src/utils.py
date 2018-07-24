@@ -49,6 +49,41 @@ def load_cs_deleted_data(excel_file, sheet_name= 'Sheet1'):
 
     return data.reset_index(drop= True)
 
+def load_58_data(txt_file, sheet_name= 'Sheet1'):
+    ''''''
+    n = 0
+    text_list = []
+    target_list = []
+    err = 0
+    with open(txt_file, 'r') as i_file:
+        for line in i_file:
+            line = line.strip()
+            if(n == 0):
+                n += 1
+                continue
+            if(line != None):
+                try:
+                    parts = line.split(',')
+                    final_target = parts[-1].replace(' ', '')
+                    raw_target = parts[-2].replace(' ', '')
+                    wxscore = int(parts[-3].replace(' ',''))
+                    text = ' '.join(parts[2:-3])
+                    if((final_target != '') & (text != '')):
+                        text_list.append(text)
+                        if(final_target != '0'):
+                            target_list.append(1)
+                        else:
+                            target_list.append(0)
+                except:
+                    err += 1
+            n += 1
+    i_file.close()
+    data = pd.DataFrame()
+    data['text'] = text_list
+    data['label'] = target_list
+    print('error %s' % err)
+    return data
+
 def load_corpus(text_file, debug= False):
     ''''''
     corpus = []
@@ -92,14 +127,17 @@ def word_seg(sentence):
         elif((w.lower() == 'v') | (w.lower() == 'q') | (w.lower() == 'w')): # alpha
             clean_words.append(w.lower())
         elif((w.isalpha() == True) & (len(w) > 1) & (is_chinese_words(w) == False)):
-            clean_words.append('ALPHA_%s' % len(w))
+            clean_words.append(w.lower())
         elif((is_chinese_words(w) & (len(w) > 1)) | (w == '加')): # chinese words
             clean_words.append(w)
         elif(re.match(r_wx, w) != None): # alpha + num
             if(len(w) <= 5):
                 clean_words.append('ALNUM_LESS')
-            else:
+            elif('qq' not in w.lower()):
                 clean_words.append('ALNUM_%s' % len(w))
+            elif(w.lower().startswith('qq')):
+                clean_words.append('qq')
+                clean_words.append('INTEGER_%s' % (len(w) - 2))
         elif((w == '-') | (w == '_')):
             clean_words.append(w)
     return ' '.join(clean_words)

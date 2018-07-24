@@ -15,6 +15,8 @@ import xgboost
 pd.set_option('display.max_rows', None)
 
 cs_delete_file = '%s/raw/内容联系方式样本_0716.xlsx' % config.DataBaseDir
+pos_58_file = '%s/raw/58_2d_55-85_positive_labeled.csv' % config.DataBaseDir
+neg_58_file = '%s/raw/58_2d_25-45_negative_labeled.csv' % config.DataBaseDir
 
 num_round = 1000
 param = {
@@ -37,9 +39,22 @@ if __name__ == '__main__':
 
     ## load data
     with utils.timer('Load data'):
-        data = utils.load_cs_deleted_data(cs_delete_file)
+        data_1 = utils.load_cs_deleted_data(cs_delete_file)
         print('target ratio: ')
-        print(data['label'].value_counts())
+        print(data_1['label'].value_counts())
+        data_2 = utils.load_58_data(pos_58_file)
+        print(data_2['label'].value_counts())
+        data_3 = utils.load_58_data(neg_58_file)
+        print(data_3['label'].value_counts())
+        data = pd.concat([data_1, data_2, data_3], axis= 0, ignore_index= True)
+        DebugDir = '%s/debug' % config.DataBaseDir
+        if(os.path.exists(DebugDir) == False):
+            os.makedirs(DebugDir)
+        writer = pd.ExcelWriter('%s/raw.xlsx' % DebugDir)
+        data.to_excel(writer, index= False)
+        writer.close()
+        del data_3, data_2, data_1
+        gc.collect()
 
     ## representation
     hit_words = []
