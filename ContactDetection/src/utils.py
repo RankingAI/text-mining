@@ -107,7 +107,7 @@ def is_chinese_words(data):
     ret = [w for w in data if ((w >= u'\u4e00') & (w <= u'\u9fa5'))]
     return len(ret) > 0
 
-def word_seg(sentence):
+def cut(sentence):
     ''''''
     r_symbols = '[’!"#$%&\'()*,/:;<=>?@[\\]^`{|}~]+|[\t\n]+|[／“”　￼＝·《》～！，；【】：。？、~@#￥%……&*（）]+'
     r_float = "^\d+?\.\d+?$"
@@ -140,7 +140,10 @@ def word_seg(sentence):
                 clean_words.append('INTEGER_%s' % (len(w) - 2))
         elif((w == '-') | (w == '_')):
             clean_words.append(w)
-    return ' '.join(clean_words)
+    return clean_words
+
+def word_seg(sentence):
+    return ' '.join(cut(sentence))
 
 def proba2label(data):
     return [1 if(v > 0.5) else 0 for v in data]

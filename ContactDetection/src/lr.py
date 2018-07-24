@@ -144,7 +144,7 @@ if __name__ == '__main__':
             for i in error_indexs:
                 text_file.write('%s\n' % data['text'][i])
                 words_file.write('%s\n' % (' '.join(X_words[i])))
-                result_file.write('%s|%s|%s\n' % (' '.join(hit_words[i]), y_train_valid[i], train_pred_label[i]))
+                result_file.write('%s|%s|%s\n' % (' '.join(hit_words[i]), y_train_valid[i], train_pred[i]))
         text_file.close()
         words_file.close()
         # debug_df = pd.DataFrame()
