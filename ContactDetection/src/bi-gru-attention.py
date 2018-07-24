@@ -139,7 +139,7 @@ def bi_gru_attention(embedding_matrix):
     x = Attention(maxlen)(x)
     x = Dense(32, activation="relu")(x)
     x = Dropout(0.25)(x)
-    outp = Dense(6, activation="sigmoid")(x)
+    outp = Dense(1, activation="sigmoid")(x)
 
     model = Model(inputs=inp, outputs=outp)
     model.compile(loss='binary_crossentropy',
@@ -183,7 +183,7 @@ with utils.timer('Load word vector'):
 
 ## representation
 with utils.timer('representation'):
-    X_words = np.array(data['text'].apply(utils.cut))
+    X_words = np.array(data['text'].apply(utils.word_seg))
     y = np.array(data['label'])
 
     tokenizer = text.Tokenizer(num_words= max_features)
@@ -205,7 +205,7 @@ with utils.timer('representation'):
 with utils.timer('Train'):
     for s in range(config.train_times):
         s_start = time.time()
-        train_pred = np.zeros(len(X))
+        train_pred = np.zeros((len(X), 1))
 
         skf = StratifiedKFold(config.kfold, random_state= 2018 * s, shuffle=False)
 

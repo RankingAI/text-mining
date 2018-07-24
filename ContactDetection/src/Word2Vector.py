@@ -54,7 +54,7 @@ class Word2Vec:
     def train(self):
         ''''''
         ## GPU configuration
-        tf_sess = tf.Session(config=tf.ConfigProto(gpu_options= tf.GPUOptions(per_process_gpu_memory_fraction= 0.5)))
+        tf_sess = tf.Session(config=tf.ConfigProto(gpu_options= tf.GPUOptions(per_process_gpu_memory_fraction= 1.0)))
         ## build words dataset
         data, count, dictionary, reverse_dictionary = tl.nlp.build_words_dataset(self.words,self.vocabulary_size,True,self.minority_replacement)
         # save vocabulary to txt

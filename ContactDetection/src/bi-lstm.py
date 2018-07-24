@@ -27,7 +27,7 @@ cs_delete_file = '%s/raw/内容联系方式样本_0716.xlsx' % config.DataBaseDi
 pos_58_file = '%s/raw/58_2d_55-85_positive_labeled.csv' % config.DataBaseDir
 neg_58_file = '%s/raw/58_2d_25-45_negative_labeled.csv' % config.DataBaseDir
 
-max_features = 10000
+max_features = 20000
 maxlen = 150
 batch_size = 32
 epochs = 2
