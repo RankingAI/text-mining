@@ -157,8 +157,10 @@ class RocAucEvaluation(Callback):
     def on_epoch_end(self, epoch, logs={}):
         if epoch % self.interval == 0:
             y_pred = self.model.predict(self.X_val, verbose=0)
-            score = roc_auc_score(self.y_val, y_pred)
-            print("\n ROC-AUC - epoch: %d - score: %.6f \n" % (epoch+1, score))
+            auc = roc_auc_score(self.y_val, y_pred)
+            precision = precision_score(self.y_val, utils.proba2label(y_pred))
+            recall = recall_score(self.y_val, utils.proba2label(y_pred))
+            print("\n ROC-AUC - epoch: %d - auc: %.6f - precision %.6f - recall %.6f\n" % (epoch+1, auc, precision, recall))
 
 ## load data
 with utils.timer('Load data'):
