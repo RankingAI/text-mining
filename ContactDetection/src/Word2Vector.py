@@ -11,10 +11,10 @@ import numpy as np
 tf.logging.set_verbosity(tf.logging.DEBUG)
 
 debug = True
-corpus_file = '%s/raw/post_content_3d.txt' % config.DataBaseDir
+corpus_file = '%s/raw/post_text_7d.txt' % config.DataBaseDir
 
 g_params = {
-    'min_freq': 3,
+    'min_freq': 6,
     'batch_size': 1200,
     'embedding_size': config.embedding_size,
     'skip_window': 3,

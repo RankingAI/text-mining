@@ -103,6 +103,20 @@ def load_corpus(text_file, debug= False):
 
     return corpus
 
+def load_test_data(text_file):
+    n = 0
+    data = []
+    with open(text_file, 'r') as i_file:
+        for line in i_file:
+            line = line.strip()
+            if(n == 0):
+                n += 1
+                continue
+            if((line != None) & (n % 20 == 0)):
+                data.append(line)
+            n += 1
+    return data
+
 def is_chinese_words(data):
     ret = [w for w in data if ((w >= u'\u4e00') & (w <= u'\u9fa5'))]
     return len(ret) > 0
@@ -128,7 +142,7 @@ def cut(sentence):
             clean_words.append(w.lower())
         elif((w.isalpha() == True) & (len(w) > 1) & (is_chinese_words(w) == False)):
             clean_words.append(w.lower())
-        elif((is_chinese_words(w) & (len(w) > 1)) | (w == '加')): # chinese words
+        elif(is_chinese_words(w)):# & (len(w) > 1)) | (w == '加')): # chinese words
             clean_words.append(w)
         elif(re.match(r_wx, w) != None): # alpha + num
             if(len(w) <= 5):

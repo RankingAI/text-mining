@@ -26,17 +26,16 @@ strategy = 'bi-lstm'
 cs_delete_file = '%s/raw/内容联系方式样本_0716.xlsx' % config.DataBaseDir
 pos_58_file = '%s/raw/58_2d_55-85_positive_labeled.csv' % config.DataBaseDir
 neg_58_file = '%s/raw/58_2d_25-45_negative_labeled.csv' % config.DataBaseDir
-test_file = '%s/raw/test.txt' % config.DataBaseDir
 
-max_features = 20000
+max_features = 10000
 maxlen = 150
 batch_size = 32
 epochs = 2
 
-def bi_lstm_model(embedding_matrix):
+def bi_lstm(embedding_matrix):
     inp = Input(shape=(maxlen,))
     x = Embedding(max_features, config.embedding_size, weights=[embedding_matrix])(inp)
-    x = SpatialDropout1D(0.50)(x)
+    x = SpatialDropout1D(0.25)(x)
     x = Bidirectional(LSTM(64, return_sequences=True, dropout=0.25, recurrent_dropout=0.25))(x)
     avg_pool = GlobalAveragePooling1D()(x)
     max_pool = GlobalMaxPooling1D()(x)
@@ -59,10 +58,8 @@ class RocAucEvaluation(Callback):
     def on_epoch_end(self, epoch, logs={}):
         if epoch % self.interval == 0:
             y_pred = self.model.predict(self.X_val, verbose=0)
-            auc = roc_auc_score(self.y_val, y_pred)
-            precision = precision_score(self.y_val, utils.proba2label(y_pred))
-            recall = recall_score(self.y_val, utils.proba2label(y_pred))
-            print("\n ROC-AUC - epoch: %d - auc: %.6f - precision %.6f - recall %.6f\n" % (epoch+1, auc, precision, recall))
+            score = roc_auc_score(self.y_val, y_pred)
+            print("\n ROC-AUC - epoch: %d - score: %.6f \n" % (epoch+1, score))
 
 ## load data
 with utils.timer('Load data'):
@@ -79,8 +76,6 @@ with utils.timer('Load data'):
         os.makedirs(DebugDir)
     del data_3, data_2, data_1
     gc.collect()
-    test_data = utils.load_test_data(test_file)
-    print('test size %s' % len(test_data))
 
 ## load word2vec lookup table
 with utils.timer('Load word vector'):
@@ -89,19 +84,15 @@ with utils.timer('Load word vector'):
 
 ## representation
 with utils.timer('representation'):
-    X_words = list(data['text'].apply(utils.word_seg))
+    X_words = np.array(data['text'].apply(utils.cut))
     y = np.array(data['label'])
-    test_words = [utils.word_seg(sentence) for sentence in test_data]
 
     tokenizer = text.Tokenizer(num_words= max_features)
-    tokenizer.fit_on_texts(X_words + test_words)
+    tokenizer.fit_on_texts(X_words)
     X = tokenizer.texts_to_sequences(X_words)
-    X_test = tokenizer.texts_to_sequences(test_words)
     del X_words
     gc.collect()
     X = sequence.pad_sequences(X, maxlen= maxlen)
-    X_test = sequence.pad_sequences(X_test, maxlen= maxlen)
-
     word_index = tokenizer.word_index
     nb_words = min(max_features, len(word_index))
     embedding_matrix = np.zeros((nb_words, config.embedding_size))
@@ -111,13 +102,15 @@ with utils.timer('representation'):
         embedding_vector = word2vec.get(word)
         if embedding_vector is not None:
             embedding_matrix[i] = embedding_vector
+    # uni_words = list(set([w for rec in X_words for w in rec]))
+    # embedding_matrix = np.array([word2vec[w] for w in uni_words if(w in word2vec)])
+    # del uni_words
+    # gc.collect()
 
-final_test_pred = np.zeros(len(X_test))
 with utils.timer('Train'):
     for s in range(config.train_times):
         s_start = time.time()
-        train_pred = np.zeros((len(X), 1))
-        test_pred = np.zeros((len(X_test), 1))
+        train_pred = np.zeros(len(X))
 
         skf = StratifiedKFold(config.kfold, random_state= 2018 * s, shuffle=False)
 
@@ -129,7 +122,7 @@ with utils.timer('Train'):
 
             print('shape of train data:')
             print(X_train.shape)
-            print('shape of valid data:')
+            print('shape of test data:')
             print(y_train.shape)
 
             model = bi_lstm_model(embedding_matrix)
@@ -146,30 +139,15 @@ with utils.timer('Train'):
             valid_recall = recall_score(y_valid, valid_pred_label)
 
             train_pred[valid_index] = valid_pred_proba
-            test_pred += model.predict(X_test, batch_size= batch_size)
 
             f_end = time.time()
             print('#%s[fold %s]: auc %.6f, precision %.6f, recall %.6f, took %s[s]' % (s, fold, valid_auc, valid_precision, valid_recall, int(f_end - f_start)))
-
-            del X_train, X_valid, y_train, y_valid
-            gc.collect()
 
         auc = roc_auc_score(y, train_pred)
         precision = precision_score(y, utils.proba2label(train_pred))
         recall = recall_score(y, utils.proba2label(train_pred))
 
-        test_pred /= config.kfold
-        final_test_pred += test_pred
-
         s_end = time.time()
         print('\n===================================================')
         print('#%s: auc %.6f, precision %.6f, recall %.6f, took %s[s]' % (s, auc, precision, recall, int(s_end - s_start)))
         print('===================================================\n')
-
-        TestOutputDir = '%s/test' % config.DataBaseDir
-        if(os.path.exists(TestOutputDir) == False):
-            os.makedirs(TestOutputDir)
-        TestOutputFile = '%s/test/%s.xlsx' % (config.DataBaseDir, strategy)
-        writer = pd.ExcelWriter(TestOutputFile)
-        pd.DataFrame({'text': test_data, 'predict': final_test_pred/(s + 1)}).to_excel(writer, index= False)
-        writer.close()
