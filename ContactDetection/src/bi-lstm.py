@@ -79,7 +79,7 @@ with utils.timer('Load data'):
         os.makedirs(DebugDir)
     del data_3, data_2, data_1
     gc.collect()
-    test_data = utils.load_test_data(test_file)
+    test_data, uid_list, info_id_list = utils.load_test_data(test_file)
     print('test size %s' % len(test_data))
 
 ## load word2vec lookup table
@@ -97,8 +97,8 @@ with utils.timer('representation'):
     tokenizer.fit_on_texts(X_words + test_words)
     X = tokenizer.texts_to_sequences(X_words)
     X_test = tokenizer.texts_to_sequences(test_words)
-    del X_words
-    gc.collect()
+    #del X_words
+    #gc.collect()
     X = sequence.pad_sequences(X, maxlen= maxlen)
     X_test = sequence.pad_sequences(X_test, maxlen= maxlen)
 
@@ -112,7 +112,7 @@ with utils.timer('representation'):
         if embedding_vector is not None:
             embedding_matrix[i] = embedding_vector
 
-final_test_pred = np.zeros(len(X_test))
+final_test_pred = np.zeros((len(X_test), 1))
 with utils.timer('Train'):
     for s in range(config.train_times):
         s_start = time.time()
@@ -154,9 +154,10 @@ with utils.timer('Train'):
             del X_train, X_valid, y_train, y_valid
             gc.collect()
 
+        train_pred_label = utils.proba2label(train_pred)
         auc = roc_auc_score(y, train_pred)
-        precision = precision_score(y, utils.proba2label(train_pred))
-        recall = recall_score(y, utils.proba2label(train_pred))
+        precision = precision_score(y, train_pred_label)
+        recall = recall_score(y, train_pred_label)
 
         test_pred /= config.kfold
         final_test_pred += test_pred
@@ -166,10 +167,29 @@ with utils.timer('Train'):
         print('#%s: auc %.6f, precision %.6f, recall %.6f, took %s[s]' % (s, auc, precision, recall, int(s_end - s_start)))
         print('===================================================\n')
 
+        ## DEBUG
+        DebugDir = '%s/debug' % config.DataBaseDir
+        if(os.path.exists(DebugDir) == False):
+            os.makedirs(DebugDir)
+        error_indexs = [i for i in range(len(y)) if(train_pred_label[i] != y[i])]
+        with open('%s/text.txt' % DebugDir, 'w') as text_file, \
+                open('%s/result.txt' % DebugDir, 'w') as result_file:
+            for i in error_indexs:
+                text_file.write('%s\n' % data['text'][i])
+                result_file.write('%s|%s|%s\n' % (' '.join(X_words[i]), y[i], train_pred[i]))
+        text_file.close()
+        result_file.close()
+
+        ## for test
+        test_data = [line.replace(',', ' ') for line in test_data]
         TestOutputDir = '%s/test' % config.DataBaseDir
         if(os.path.exists(TestOutputDir) == False):
             os.makedirs(TestOutputDir)
-        TestOutputFile = '%s/test/%s.xlsx' % (config.DataBaseDir, strategy)
-        writer = pd.ExcelWriter(TestOutputFile)
-        pd.DataFrame({'text': test_data, 'predict': final_test_pred/(s + 1)}).to_excel(writer, index= False)
-        writer.close()
+        outdf = pd.DataFrame({'text': test_data, 'uid': uid_list, 'info_id': info_id_list, 'predict_proba': final_test_pred.flatten()/(s + 1)})
+        outdf[['uid', 'info_id', 'text', 'predict_proba']].to_csv('%s/%s_07_25.csv' % (TestOutputDir, strategy), header= True, index= False, encoding= 'utf-8')
+        #TestOutputFile = '%s/test/%s.xlsx' % (config.DataBaseDir, strategy)
+        #writer = pd.ExcelWriter(TestOutputFile)
+        #outdf = pd.DataFrame({'text': test_data, 'predict': final_test_pred.flatten()/(s + 1)})
+        #outdf = outdf.applymap(lambda x: x.encode('unicode_escape').decode('utf-8') if isinstance(x, str) else x)
+        #outdf.to_excel(writer,index= False,encoding='utf-8')
+        #writer.close()

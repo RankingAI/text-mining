@@ -106,6 +106,8 @@ def load_corpus(text_file, debug= False):
 def load_test_data(text_file):
     n = 0
     data = []
+    uid_list = []
+    info_id_list = []
     with open(text_file, 'r') as i_file:
         for line in i_file:
             line = line.strip()
@@ -113,9 +115,13 @@ def load_test_data(text_file):
                 n += 1
                 continue
             if((line != None) & (n % 20 == 0)):
-                data.append(line)
+                parts = line.split('\t')
+                if((len(parts) >= 3) & parts[0].isnumeric() & parts[1].isnumeric()):
+                    data.append('\t'.join(parts[2:]))
+                    uid_list.append(parts[0])
+                    info_id_list.append(parts[1])
             n += 1
-    return data
+    return data, uid_list, info_id_list
 
 def is_chinese_words(data):
     ret = [w for w in data if ((w >= u'\u4e00') & (w <= u'\u9fa5'))]
