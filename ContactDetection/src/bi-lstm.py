@@ -233,7 +233,7 @@ def train(X, y, model, outputdir):
 def test(X, model, outputdir, auxinfo):
     ''''''
     model.compile(loss='binary_crossentropy',optimizer='adam',metrics=['accuracy'])
-    pred_test = model.predict(X, batch_size= batch_size)
+    pred_test = model.predict(X, batch_size= batch_size).flatten()
     print(pred_test.shape)
     auxinfo['text'] = np.array([text.replace(',', ' ') for text in auxinfo['text']])
     outdf = pd.DataFrame({'uid': auxinfo['uid'], 'info_id': auxinfo['info_id'], 'text': auxinfo['text'], 'predict_proba': pred_test})
