@@ -5,35 +5,43 @@ import tensorflow as tf
 import tensorlayer as tl
 import collections
 import gc
-import time
+import time, datetime
 import numpy as np
+import json
 
 tf.logging.set_verbosity(tf.logging.DEBUG)
 
 debug = True
-corpus_file = '%s/raw/post_text_7d.txt' % config.DataBaseDir
+corpus_file = '%s/raw/%s.txt' % (config.DataBaseDir, config.corpus_version)
+OutputDir = '%s/word2vec' % config.ModelOutputDir
+model_name = 'w2v_sgns' # word2vec: skip gram with negative sampling
+datestr = datetime.datetime.now().strftime("%Y%m%d")
+
+if(os.path.exists(OutputDir) == False):
+    os.makedirs(OutputDir)
 
 g_params = {
-    'min_freq': 6,
+    'min_freq': 20,
     'batch_size': 1200,
     'embedding_size': config.embedding_size,
     'skip_window': 3,
     'num_sampled': 128,
     'learning_rate': 0.8,
-    'n_epoch': 50,
-    'model_dir': '%s/model' % config.DataBaseDir,
+    'n_epoch': 20,
     'minority_replacement': '_UNK',
     'verbose': 500,
     'resume': False,
+    'strategy': '%s_%s_%s_%s' % (model_name, config.embedding_size, config.corpus_version, datestr)
 }
 
 class Word2Vec:
     ''''''
     def __init__(self, data, params):
         ''''''
+        self.model_name = params['strategy']
         self.words = [w for rec in data for w in rec]
         ## debug
-        print('wx count %s' % np.sum([1 for w in self.words if((w == 'wx'))]))
+        #print('wx count %s' % np.sum([1 for w in self.words if((w == 'wx'))]))
         ##
         self.vocabulary_size = len([w for w, c in collections.Counter(self.words).most_common() if(c > params['min_freq'])])
         self.batch_size = params['batch_size']
@@ -43,25 +51,36 @@ class Word2Vec:
         self.num_sampled = params['num_sampled']
         self.learning_rate = params['learning_rate']
         self.n_epoch = params['n_epoch']
-        if(os.path.exists(params['model_dir']) == False):
-            os.makedirs(params['model_dir'])
-        self.model_file_name = '%s/model_word2vec_post_text_3d' % params['model_dir']
         self.verbose = params['verbose']
         self.resume = params['resume']
         self.num_steps = int((len(self.words) / self.batch_size) * self.n_epoch)  # total number of iteration
         self.minority_replacement = params['minority_replacement']
+        ## GPU configuration
+        self.tf_sess = tf.Session(config=tf.ConfigProto(gpu_options= tf.GPUOptions(per_process_gpu_memory_fraction= 0.7)))
+
+    def __load_checkpoint(self, ckpt_file_path):
+        ckpt = ckpt_file_path + '.ckpt'
+        index = ckpt + ".index"
+        meta = ckpt + ".meta"
+        if os.path.isfile(index) and os.path.isfile(meta):
+            tf.train.Saver().restore(self.tf_sess, ckpt)
+
+    def __save_checkpint(self, ckpt_file_path):
+        ''''''
+        path = os.path.dirname(os.path.abspath(ckpt_file_path))
+        if os.path.isdir(path) == False:
+            logging.warning('Path (%s) not exists, making directories...', path)
+            os.makedirs(path)
+        tf.train.Saver().save(self.tf_sess, ckpt_file_path + '.ckpt')
 
     def train(self):
         ''''''
-        ## GPU configuration
-        tf_sess = tf.Session(config=tf.ConfigProto(gpu_options= tf.GPUOptions(per_process_gpu_memory_fraction= 1.0)))
         ## build words dataset
         data, count, dictionary, reverse_dictionary = tl.nlp.build_words_dataset(self.words,self.vocabulary_size,True,self.minority_replacement)
         # save vocabulary to txt
-        tl.nlp.save_vocab(count, name='%s/model/vocabulary_word2vec_post_text_3d.txt' % config.DataBaseDir)
+        tl.nlp.save_vocab(count, name='%s/vocabulary_%s.txt' % (OutputDir, self.model_name))
         del self.words
         gc.collect()
-        # sys.exit(1)
         print('-------------------------------------------')
         print('Most 5 common words (+UNK)', count[:5])
         print('Sample data', data[:10], [reverse_dictionary[i] for i in data[:10]])
@@ -85,19 +104,16 @@ class Word2Vec:
             nce_b_init_args= {},
             name= 'word2vec_layer',
         )
-
-        # Construct the optimizer. Note: AdamOptimizer is very slow in this case
         cost = emb_net.nce_cost
-        train_params = emb_net.all_params
-        #train_op = tf.train.GradientDescentOptimizer(self.learning_rate, use_locking= False).minimize(cost, var_list=train_params)
-        train_op = tf.train.AdagradOptimizer(self.learning_rate, initial_accumulator_value=0.1,use_locking=False)\
-             .minimize(cost, var_list= train_params)
+        train_op = tf.train.GradientDescentOptimizer(self.learning_rate).minimize(cost)
 
         ## initialize global weights
-        tl.layers.initialize_global_variables(tf_sess)
+        tl.layers.initialize_global_variables(self.tf_sess)
+        ckpt_file_path = "%s/checkpoint" % OutputDir
+        if(os.path.exists(ckpt_file_path) == False):
+            os.makedirs(ckpt_file_path)
         if self.resume:
-            print("Load existing model" + "!" * 10)
-            tl.files.load_and_assign_npz_dict(name= self.model_file_name + '.npz', sess= tf_sess)
+            self.__load_checkpoint('%s/%s' % (ckpt_file_path, self.model_name))
 
         emb_net.print_params(False)
         emb_net.print_layers()
@@ -114,7 +130,7 @@ class Word2Vec:
             feed_dict = {train_inputs: batch_inputs, train_labels: batch_labels}
             # We perform one update step by evaluating the train_op (including it
             # in the list of returned values for sess.run()
-            _, loss_val = tf_sess.run([train_op, cost], feed_dict=feed_dict)
+            _, loss_val = self.tf_sess.run([train_op, cost], feed_dict=feed_dict)
             end = time.time()
 
             loss_list.append(loss_val)
@@ -122,30 +138,22 @@ class Word2Vec:
                 print('Average loss at step %d/%d, loss: %.6f, take %ss' % (step, self.num_steps, np.mean(loss_list), int(end - start)))
 
             ## saving
-            if(((step < self.num_steps - 1)) & (step % ((self.verbose + 1) * 10) == 0) | (step == self.num_steps - 1)):
-                print("Save model, data and dictionaries" + "!" * 10)
-                # # Save to ckpt or npz file
-                tl.files.save_npz_dict(emb_net.all_params, name= self.model_file_name + '.npz', sess= tf_sess)
-                # tl.files.save_any_to_npy(
-                #     save_dict={
-                #         'data': data,
-                #         'count': count,
-                #         'dictionary': dictionary,
-                #         'reverse_dictionary': reverse_dictionary
-                #     }, name= self.model_file_name + '.npy'
-                # )
+            if(((step < self.num_steps - 1) & (step % ((self.verbose + 1) * 10) == 0)) | (step == self.num_steps - 1)):
+                print("#%s, Save model, data and dictionaries %s" % (step, "!" * 10))
+                ## Save to ckpt file
+                self.__save_checkpint('%s/%s' % (ckpt_file_path, self.model_name))
+
                 ## saving embedding matrix
+                embedding_file_path = "%s/%s" % (OutputDir, self.model_name)
                 uni_words = list(dictionary.keys())
                 uni_ids = list(dictionary.values())
-                embedding_matrix = tf_sess.run(tf.nn.embedding_lookup(emb_net.normalized_embeddings, tf.constant(uni_ids, dtype=tf.int32)))
-                word2embvec = dict(zip(uni_words, embedding_matrix))
-                tl.files.save_any_to_npy(save_dict= word2embvec, name= '%s/model/word2vec_post_text_3d' % config.DataBaseDir)
-        ## saving embedding matrix
-        uni_words = list(dictionary.keys())
-        uni_ids = list(dictionary.values())
-        embedding_matrix = tf_sess.run(tf.nn.embedding_lookup(emb_net.normalized_embeddings, tf.constant(uni_ids, dtype=tf.int32)))
-        word2embvec = dict(zip(uni_words, embedding_matrix))
-        tl.files.save_any_to_npy(save_dict= word2embvec, name= '%s/model/word2vec_post_text_3d' % config.DataBaseDir)
+                embedding_matrix = self.tf_sess.run(tf.nn.embedding_lookup(emb_net.normalized_embeddings, tf.constant(uni_ids, dtype=tf.int32)))
+                word2emb = dict(zip(uni_words, embedding_matrix))
+                tl.files.save_any_to_npy(save_dict= word2emb,name= embedding_file_path)
+                with open('%s/%s.json' % (OutputDir, self.model_name), 'w') as o_file:
+                    for k in word2emb:
+                        o_file.write('%s\n' % json.dumps({k: word2emb[k].flatten().tolist()}, ensure_ascii=False))
+                o_file.close()
 
 if __name__ == '__main__':
     fmt = "%(asctime)s %(levelname)s %(message)s"
@@ -154,6 +162,7 @@ if __name__ == '__main__':
     ## load corpus
     with utils.timer('Loading corpus'):
         corpus = utils.load_corpus(corpus_file, debug)
+
     ## train word2vec with skip-gram & negative sampling
     with utils.timer('word2vec training'):
         Word2Vec(corpus, g_params).train()
