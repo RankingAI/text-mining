@@ -1,7 +1,10 @@
+# entry of this project
 #
-# This is a implementation of Muti-turn Recurrent Neural Network oriented on intention classification with contextual infomation,
+# This is a simplified implementation version of Muti-turn Recurrent Neural Network oriented on intention classification with contextual infomation,
 # which is referenced from http://giusepperizzo.github.io/publications/Mensio_Rizzo-HQA2018.pdf, while the dataset used here is come
 # from https://nlp.stanford.edu/blog/a-new-multi-turn-multi-domain-task-oriented-dialogue-dataset/.
+#
+# Intention of offline induction detection within inter-message scenario is our final goal of this project, which is to be developed within the near future.
 #
 # Created by yuanpingzhou at 9/25/18
 
@@ -23,7 +26,7 @@ import tensorflow as tf
 from keras.models import Model
 from keras.layers import Input, Dense, SpatialDropout2D, TimeDistributed, Bidirectional, LSTM
 from keras.layers import concatenate, GlobalAveragePooling2D, GlobalMaxPooling2D
-from keras.callbacks import Callback
+from keras.callbacks import Callback, EarlyStopping
 import keras.backend as K
 
 # custom imports
@@ -48,19 +51,19 @@ def get_coefs(word, *arr):
 
 ## load word embedding
 def load_word_embedding_vectors(f, corpus):
-    k = 5000 # for debugging
+    k = 0
     EmbeddingDict = {}
     with open(f, 'r', encoding= 'utf-8') as i_file:
         for line in i_file:
-            #if(k == 0):
+            #if(k == 10000):
             #   break
             words = line.rstrip().rsplit(' ')
             if(words[0] in corpus):
                 w, coe_vec= get_coefs(*words)
                 EmbeddingDict[w] = coe_vec
-            if(k % 500 == 0):
-                print('%s done.' % (5000 - k))
-            k -= 1
+            if(k % 10000 == 0):
+                print('%s done.' % k)
+            k += 1
     i_file.close()
     return EmbeddingDict
 
@@ -146,38 +149,41 @@ def train(input_dir, output_dir):
             for i in range(len(data[m]['text'])):
                 if((config.debug == True) & (i == cnt)): # debug
                     break
-                with utils.timer('%s' % i):
-                    text = data[m]['text'][i]
-                    target = data[m]['target'][i]
+                text = data[m]['text'][i]
+                target = data[m]['target'][i]
 
-                    # one-hot encode for categorical target
-                    target_encoded = np.zeros(config.num_classes, dtype= np.int32)
-                    target_encoded[config.targets_encode[target]] = 1
-                    y[m].append(target_encoded)
+                # one-hot encode for categorical target
+                target_encoded = np.zeros(config.num_classes, dtype= np.int32)
+                target_encoded[config.targets_encode[target]] = 1
+                y[m].append(target_encoded)
 
-                    # clean text with nltk toolkit
-                    word_vectors = [word_tokenize(sentence) for sentence in text.rstrip().rsplit('^')]
-                    # collect words
-                    for sent in word_vectors:
-                        word_set.update(sent)
+                # clean text with nltk toolkit
+                word_vectors = [word_tokenize(sentence) for sentence in text.rstrip().rsplit('^')]
+                # collect words
+                for sent in word_vectors:
+                    word_set.update(sent)
 
-                    # padding on sentences 
-                    word_vectors = np.array([sent[:config.max_word] if(len(sent) >= config.max_word) else ([config.default_word] * (config.max_word - len(sent))) + sent for sent in word_vectors])
+                # padding on sentences
+                word_vectors = np.array([sent[:config.max_word] if(len(sent) >= config.max_word) else ([config.default_word] * (config.max_word - len(sent))) + sent for sent in word_vectors])
 
-                    # padding on dialogues
-                    if(len(word_vectors) >= config.max_sentence):
-                        word_vectors = word_vectors[:config.max_sentence,:]
-                    else:
-                        word_vectors = np.concatenate((np.full((config.max_sentence - len(word_vectors), config.max_word), config.default_word), word_vectors), axis= 0)
+                # padding on dialogues
+                if(len(word_vectors) >= config.max_sentence):
+                    word_vectors = word_vectors[:config.max_sentence,:]
+                else:
+                    word_vectors = np.concatenate((np.full((config.max_sentence - len(word_vectors), config.max_word), config.default_word), word_vectors), axis= 0)
 
-                    X[m].append(word_vectors)
+                X[m].append(word_vectors)
 
-                    # garbage collection
-                    del word_vectors
-                    gc.collect()
+                if(i % 200 == 0):
+                    print('%s done.' % i)
+
+                # garbage collection
+                del word_vectors
+                gc.collect()
 
             X[m] = np.array(X[m])
             y[m] = np.array(y[m])
+
             print('%s done.' % m)
             print(X[m].shape)
 
@@ -210,8 +216,11 @@ def train(input_dir, output_dir):
     gc.collect()
 
     # model compilation
-    model = get_network(print_network= True)
+    model = get_network(sentence_dim= config.sentence_dim, dialogue_dim= config.dialogue_dim, print_network= True)
     model.compile(loss='binary_crossentropy',optimizer='adam',metrics=['accuracy'])
+
+    # early stopping
+    early_stopping = EarlyStopping(monitor= 'val_acc', mode='max', patience= 20, verbose= 2)
 
     # train
     with utils.timer('fitting'):
@@ -219,12 +228,15 @@ def train(input_dir, output_dir):
                 batch_size= config.batch_size,
                 epochs= config.epochs,
                 validation_data= (X['dev'], y['dev']),
-                verbose=2)
+                callbacks= [early_stopping],
+                verbose= 2)
 
     _print_memory_usage()
 
     # test
-    model.evaluate(X['test'], y['test'])
+    loss, acc = model.evaluate(X['test'], y['test'])
+    print(loss)
+    print(acc)
 
     # save model
     ## TODO
